@@ -229,10 +229,10 @@ func webcamHandler(printer string) http.HandlerFunc {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
-		var streamURLenderD = "https://opti3d.siedziba.hs-ldz.pl/" + printer + "/webcam/?action=stream"
+		var streamURL = "https://opti3d.siedziba.hs-ldz.pl/" + printer + "/webcam/?action=stream"
 
 		// Żądanie strumienia wideo od zewnętrznego serwera
-		req, err := http.NewRequest("GET", streamURLenderD, nil)
+		req, err := http.NewRequest("GET", streamURL, nil)
 		if err != nil {
 			http.Error(w, "Error creating request", http.StatusInternalServerError)
 			return
