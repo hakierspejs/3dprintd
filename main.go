@@ -49,6 +49,8 @@ func main() {
 	go monitorPrinterState("ender-d")
 	go monitorPrinterState("ender-c")
 
+	http.HandleFunc("/", indexHandler)
+
 	http.HandleFunc("/ender-d/cam/", webcamHandler("ender-d"))
 	http.HandleFunc("/ender-d/status/", printersStatusHandler("ender-d"))
 	http.HandleFunc("/ender-d/", viewHandler("ender-d"))
@@ -63,6 +65,25 @@ func main() {
 	if err := http.ListenAndServe("0.0.0.0:5000", nil); err != nil {
 		fmt.Println("Error starting server:", err)
 	}
+}
+
+func indexHandler(w http.ResponseWriter, r *http.Request) {
+	// Check basic auth
+	auth := r.Header.Get("Authorization")
+	expectedAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte(username+":"+password))
+
+	if auth != expectedAuth {
+		w.Header().Set("WWW-Authenticate", `Basic realm="Login Required"`)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Print a list with links to supported printers
+	fmt.Fprintf(w, "<h1>Supported printers:</h1>")
+	fmt.Fprintf(w, "<ul>")
+	fmt.Fprintf(w, "<li><a href=\"/ender-d/\">Ender D</a></li>")
+	fmt.Fprintf(w, "<li><a href=\"/ender-c/\">Ender C</a></li>")
+	fmt.Fprintf(w, "</ul>")
 }
 
 func getPrinterState(printer string) (PrinterResponse, error) {
