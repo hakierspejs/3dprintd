@@ -1,0 +1,16 @@
+networks:
+  traefik:
+    external: true
+
+services:
+  3dprint:
+    networks:
+      - traefik
+    labels:
+        traefik.http.routers.3dprint.rule: "Host(`3dprint.hs-ldz.pl`)"
+        traefik.http.routers.3dprint.entrypoints: "websecure"
+        traefik.http.routers.3dprint.tls.certresolver: "myresolver"
+    expose:
+      - "5000"
+    restart: unless-stopped
+    build: .
