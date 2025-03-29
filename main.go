@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"io"
 	"io/ioutil"
 	"log"
@@ -21,37 +22,43 @@ import (
 )
 
 type PrinterProgress struct {
-    Completion float64 `json:"completion"`
+	Completion float64 `json:"completion"`
 }
 
 type PrinterResponse struct {
-	State string `json:"state"`
-    Progress PrinterProgress `json:"progress"`
+	State    string          `json:"state"`
+	Progress PrinterProgress `json:"progress"`
 }
 
-func readFileContentsTrimmed(path string) (string) {
-    data, err := ioutil.ReadFile(path)
-    if err != nil {
-        panic(err)
-    }
-    return strings.TrimSpace(string(data))
+func readFileContentsTrimmed(path string) string {
+	data, err := ioutil.ReadFile(path)
+	if err != nil {
+		panic(err)
+	}
+	return strings.TrimSpace(string(data))
 }
 
-var username        = "hakierspejs"
-var password        = readFileContentsTrimmed("secrets/http-password.txt")
+var username = "hakierspejs"
+var password = readFileContentsTrimmed("secrets/http-password.txt")
 var streamURLenderD = "https://opti3d.siedziba.hs-ldz.pl/ender-d/webcam/?action=stream"
-var ENDER_D_API_KEY = readFileContentsTrimmed("secrets/ender-d-api-key.txt")
 
-var matrixUserID    = readFileContentsTrimmed("secrets/matrix-user-id.txt")
-var matrixUsername  = readFileContentsTrimmed("secrets/matrix-username.txt")
-var matrixPassword  = readFileContentsTrimmed("secrets/matrix-password.txt")
-var matrixRoomID    = readFileContentsTrimmed("secrets/matrix-room-id.txt")
+var matrixUserID = readFileContentsTrimmed("secrets/matrix-user-id.txt")
+var matrixUsername = readFileContentsTrimmed("secrets/matrix-username.txt")
+var matrixPassword = readFileContentsTrimmed("secrets/matrix-password.txt")
+var matrixRoomID = readFileContentsTrimmed("secrets/matrix-room-id.txt")
 
 func main() {
-	//go monitorPrinterState()
-	http.HandleFunc("/ender-d/cam/", enderDHandler)
-	http.HandleFunc("/ender-d/status/", enderDStatusHandler)
-	http.HandleFunc("/ender-d/", enderDView)
+	//go monitorPrinterState("ender-d")
+	//go monitorPrinterState("ender-c")
+
+	http.HandleFunc("/ender-d/cam/", webcamHandler("ender-d"))
+	http.HandleFunc("/ender-d/status/", printersStatusHandler("ender-d"))
+	http.HandleFunc("/ender-d/", viewHandler("ender-d"))
+
+	http.HandleFunc("/ender-c/cam/", webcamHandler("ender-c"))
+	http.HandleFunc("/ender-c/status/", printersStatusHandler("ender-c"))
+	http.HandleFunc("/ender-c/", viewHandler("ender-c"))
+
 	http.HandleFunc("/lights/off/", lightsOff)
 	http.HandleFunc("/lights/on/", lightsOn)
 	fmt.Println("Server is listening on port 5000...")
@@ -62,10 +69,10 @@ func main() {
 
 func getPrinterState(printer string) (PrinterResponse, error) {
 	// Read API key from file
-	apiKey := ENDER_D_API_KEY
+	apiKey := readFileContentsTrimmed("secrets/" + printer + "-api-key.txt")
 
 	// Create HTTP request
-	req, err := http.NewRequest("GET", "https://opti3d.siedziba.hs-ldz.pl/" + printer + "/api/job", nil)
+	req, err := http.NewRequest("GET", "https://opti3d.siedziba.hs-ldz.pl/"+printer+"/api/job", nil)
 	if err != nil {
 		return PrinterResponse{}, fmt.Errorf("failed to create HTTP request: %w", err)
 	}
@@ -218,15 +225,15 @@ func sendImage(imagePath string) error {
 	return nil
 }
 
-func monitorPrinterState() error {
+func monitorPrinterState(printer string) error {
 	log.Println("Starting printer state monitoring...")
 
 	// Get initial state
-	resp, err := getPrinterState("ender-d")
+	resp, err := getPrinterState(printer)
 	if err != nil {
 		return fmt.Errorf("initial state check failed: %w", err)
 	}
-    currentState := resp.State
+	currentState := resp.State
 
 	log.Printf("Initial printer state: %s", currentState)
 
@@ -241,12 +248,12 @@ func monitorPrinterState() error {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		resp, err := getPrinterState("ender-d")
+		resp, err := getPrinterState(printer)
 		if err != nil {
 			log.Printf("Error checking printer state: %v", err)
 			continue
 		}
-        newState := resp.State
+		newState := resp.State
 
 		// If state changed, send notification
 		if newState != currentState {
@@ -266,8 +273,112 @@ func monitorPrinterState() error {
 	return nil
 }
 
-func enderDHandler(w http.ResponseWriter, r *http.Request) {
-	// Uwierzytelnienie Basic Auth
+func webcamHandler(printer string) http.HandlerFunc {
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Uwierzytelnienie Basic Auth
+		auth := r.Header.Get("Authorization")
+		expectedAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte(username+":"+password))
+
+		if auth != expectedAuth {
+			w.Header().Set("WWW-Authenticate", `Basic realm="Login Required"`)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		// Żądanie strumienia wideo od zewnętrznego serwera
+		req, err := http.NewRequest("GET", streamURLenderD, nil)
+		if err != nil {
+			http.Error(w, "Error creating request", http.StatusInternalServerError)
+			return
+		}
+
+		req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(username+":"+password)))
+
+		// Wyłącz weryfikację SSL (tylko w przypadku problemów z certyfikatami SSL)
+		tr := &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}
+		client := &http.Client{Transport: tr}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+
+		// Przekaż nagłówki odpowiedzi do klienta
+		for k, v := range resp.Header {
+			w.Header()[k] = v
+		}
+
+		// Ustaw rodzaj treści na multipart
+		w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
+
+		// Przewód treści strumienia do klienta
+		if _, err = io.Copy(w, resp.Body); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+}
+
+func printersStatusHandler(printer string) http.HandlerFunc {
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		expectedAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte(username+":"+password))
+
+		if auth != expectedAuth {
+			w.Header().Set("WWW-Authenticate", `Basic realm="Login Required"`)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		resp, err := getPrinterState(printer)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// Ustaw nagłówki odpowiedzi
+		w.Header().Set("Content-Type", "application/json")
+
+		// Zwróć stan drukarki jako JSON
+		json.NewEncoder(w).Encode(resp)
+	}
+}
+
+func viewHandler(printer string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		expectedAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte(username+":"+password))
+
+		if auth != expectedAuth {
+			w.Header().Set("WWW-Authenticate", `Basic realm="Login Required"`)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		tmpl, err := template.ParseFiles("view_template.html")
+		if err != nil {
+			http.Error(w, "Could not load template", http.StatusInternalServerError)
+			return
+		}
+
+		data := struct {
+			Printer string
+		}{
+			Printer: printer,
+		}
+
+		w.Header().Set("Content-Type", "text/html")
+		tmpl.Execute(w, data)
+	}
+}
+
+func lightsSet(w http.ResponseWriter, r *http.Request, power string) {
 	auth := r.Header.Get("Authorization")
 	expectedAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte(username+":"+password))
 
@@ -277,21 +388,15 @@ func enderDHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Żądanie strumienia wideo od zewnętrznego serwera
-	req, err := http.NewRequest("GET", streamURLenderD, nil)
+	url := "http://10.14.22.148/cm?cmnd=Power%20" + power
+	//url := "http://localhost/cm?cmnd=Power%20" + power
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		http.Error(w, "Error creating request", http.StatusInternalServerError)
 		return
 	}
 
-	req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(username+":"+password)))
-
-	// Wyłącz weryfikację SSL (tylko w przypadku problemów z certyfikatami SSL)
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := &http.Client{Transport: tr}
-
+	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
@@ -299,199 +404,15 @@ func enderDHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
-	// Przekaż nagłówki odpowiedzi do klienta
-	for k, v := range resp.Header {
-		w.Header()[k] = v
-	}
+	w.WriteHeader(http.StatusOK)
 
-	// Ustaw rodzaj treści na multipart
-	w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
-
-	// Przewód treści strumienia do klienta
-	if _, err = io.Copy(w, resp.Body); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-}
-
-func enderDStatusHandler(w http.ResponseWriter, r *http.Request) {
-
-	auth := r.Header.Get("Authorization")
-	expectedAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte(username+":"+password))
-
-	if auth != expectedAuth {
-		w.Header().Set("WWW-Authenticate", `Basic realm="Login Required"`)
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-    resp, err := getPrinterState("ender-d")
-    if err != nil {
-        http.Error(w, err.Error(), http.StatusInternalServerError)
-        return
-    }
-
-    // Ustaw nagłówki odpowiedzi
-    w.Header().Set("Content-Type", "application/json")
-
-    // Zwróć stan drukarki jako JSON
-    json.NewEncoder(w).Encode(resp)
-}
-
-
-func enderDView(w http.ResponseWriter, r *http.Request) {
-
-    auth := r.Header.Get("Authorization")
-    expectedAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte(username+":"+password))
-
-    if auth != expectedAuth {
-        w.Header().Set("WWW-Authenticate", `Basic realm="Login Required"`)
-        http.Error(w, "Unauthorized", http.StatusUnauthorized)
-        return
-    }
-
-    html := `
-    <!DOCTYPE html>
-<html lang="pl">
-<head>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta charset="UTF-8">
-    <title>Podgląd i Status</title>
-    <style>
-    body {
-    margin: 0;
-    font-family: Arial, sans-serif;
-}
-
-.container {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-}
-
-.preview {
-    flex: 1;
-    background: #000;
-    height: 50vh; /* Zajmuje połowę wysokości ekranu */
-}
-
-.status {
-    flex: 1;
-    background: #f0f0f0;
-    padding: 10px;
-    box-sizing: border-box;
-    height: 50vh; /* Zajmuje połowę wysokości ekranu */
-}
-
-.status p {
-    margin: 0;
-}
-
-img {
-    width: 100%;
-    height: 100%;
-    object-fit: contain; /* Upewnij się, że obrazek wypełnia całą dostępną przestrzeń */
-}
-
-
-
-@media (min-aspect-ratio: 1/1) {
-    .container {
-        flex-direction: row; /* Zmieniamy kierunek flex na poziomy, gdy szerokość > wysokość */
-    }
-    .preview,
-    .status {
-        height: 100%; /* Dopasowujemy wysokość do pełnej wysokości ekranu */
-        width: 50vw;  /* Połowa szerokości ekranu, gdy układ jest poziomy */
-    }
-}
-
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="preview">
-            <img src="/ender-d/cam/" width="100%" height="100%" alt="Podgląd" />
-        </div>
-        <div class="status">
-            <p id="status">Status ładowania...</p>
-            <input type="checkbox" onclick="triggerLights()">Włącz/Wyłącz światła</input>
-        </div>
-    </div>
-
-    <script>
-    function fetchStatus() {
-        fetch('/ender-d/status/')
-            .then(response => response.json())
-            .then(data => {
-                const completion = data['progress']['completion'];
-                document.getElementById('status').innerHTML = ` + "`" + `
-                    <p>Postęp drukowania: ${(completion).toFixed(2)}%</p>
-                ` + "`" + `;
-            })
-            .catch(error => {
-                document.getElementById('status').innerHTML = '<p>Błąd podczas pobierania statusu.</p>';
-            });
-    }
-
-    function triggerLights() {
-        // pobierz stan świateł z checkboxa
-        const lightsOn = document.querySelector('input[type="checkbox"]').checked;
-        if (lightsOn) {
-            fetch('/lights/on/', { method: 'POST' }).catch(console.error);
-        } else {
-            fetch('/lights/off/', { method: 'POST' }).catch(console.error);
-        }
-    }
-
-    fetchStatus();
-    setInterval(fetchStatus, 5000);
-    </script>
-
-</body>
-</html>
-`
-
-    w.Header().Set("Content-Type", "text/html")
-    w.Write([]byte(html))
-}
-
-
-func lightsSet(w http.ResponseWriter, r *http.Request, power string) {
-    auth := r.Header.Get("Authorization")
-    expectedAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte(username+":"+password))
-
-    if auth != expectedAuth {
-        w.Header().Set("WWW-Authenticate", `Basic realm="Login Required"`)
-        http.Error(w, "Unauthorized", http.StatusUnauthorized)
-        return
-    }
-
-    url := "http://10.14.22.148/cm?cmnd=Power%20" + power
-    //url := "http://localhost/cm?cmnd=Power%20" + power
-    req, err := http.NewRequest("GET", url, nil)
-    if err != nil {
-        http.Error(w, "Error creating request", http.StatusInternalServerError)
-        return
-    }
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    if err != nil {
-        http.Error(w, err.Error(), http.StatusBadGateway)
-        return
-    }
-    defer resp.Body.Close()
-
-    w.WriteHeader(http.StatusOK)
-
-    return
+	return
 }
 
 func lightsOn(w http.ResponseWriter, r *http.Request) {
-    lightsSet(w, r, "On")
+	lightsSet(w, r, "On")
 }
 
 func lightsOff(w http.ResponseWriter, r *http.Request) {
-    lightsSet(w, r, "Off")
+	lightsSet(w, r, "Off")
 }
