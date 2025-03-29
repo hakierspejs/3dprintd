@@ -78,11 +78,11 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Print a list with links to supported printers
-	fmt.Fprintf(w, "<h1>Supported printers:</h1>")
-	fmt.Fprintf(w, "<ul>")
-	fmt.Fprintf(w, "<li><a href=\"/ender-d/\">Ender D</a></li>")
-	fmt.Fprintf(w, "<li><a href=\"/ender-c/\">Ender C</a></li>")
-	fmt.Fprintf(w, "</ul>")
+	_, _ = fmt.Fprintf(w, "<h1>Supported printers:</h1>")
+	_, _ = fmt.Fprintf(w, "<ul>")
+	_, _ = fmt.Fprintf(w, "<li><a href=\"/ender-d/\">Ender D</a></li>")
+	_, _ = fmt.Fprintf(w, "<li><a href=\"/ender-c/\">Ender C</a></li>")
+	_, _ = fmt.Fprintf(w, "</ul>")
 }
 
 func getPrinterState(printer string) (PrinterResponse, error) {
