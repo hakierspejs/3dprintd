@@ -203,10 +203,11 @@ func getClient() (*mautrix.Client, id.RoomID, error) {
 	return client, id.RoomID(matrixRoomID), nil
 }
 
-func sendMatrixMsg(msg string) error {
+func sendMatrixMsg(msg string) {
 	client, roomID, err := getClient()
 	if err != nil {
-		return err
+		log.Printf("failed to get Matrix client: %v", err)
+		return
 	}
 
 	// Send the message
@@ -216,11 +217,11 @@ func sendMatrixMsg(msg string) error {
 		Body:    msg,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to send message: %w", err)
+		log.Printf("failed to send message: %v", err)
+		return
 	}
 
 	log.Printf("sent text message(msg=%q) => %s", msg, sendResp.EventID)
-	return nil
 }
 
 func monitorPrinterState(printer string) {
@@ -252,10 +253,7 @@ func monitorPrinterState(printer string) {
 			log.Printf("Printer %s state changed: %s -> %s", printer, currentState, newState)
 
 			message := fmt.Sprintf("🖨️ Printer %s state changed: %s -> %s", printer, currentState, newState)
-			err = sendMatrixMsg(message)
-			if err != nil {
-				log.Printf("Error sending notification: %v", err)
-			}
+			sendMatrixMsg(message)
 
 			// Update current state
 			currentState = newState
