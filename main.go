@@ -145,6 +145,7 @@ func cancelPrintJob(printer string) http.HandlerFunc {
 
 		// Add API key header
 		req.Header.Add("X-Api-Key", apiKey)
+		req.Header.Add("Content-Type", "application/json")
 
 		// Create HTTP client that skips SSL verification
 		tr := &http.Transport{
