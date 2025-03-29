@@ -168,7 +168,9 @@ func cancelPrintJob(printer string) http.HandlerFunc {
 		if err != nil {
 			log.Printf("failed to read response body: %v", err)
 		}
-		log.Printf("cancelPrintJob response: %s", respBytes)
+		msg := fmt.Sprintf("Cancel button clicked. Response: %s", respBytes)
+		log.Println(msg)
+		sendMatrixMsg(msg)
 
 	}
 }
@@ -201,7 +203,7 @@ func getClient() (*mautrix.Client, id.RoomID, error) {
 	return client, id.RoomID(matrixRoomID), nil
 }
 
-func sendMsg(msg string) error {
+func sendMatrixMsg(msg string) error {
 	client, roomID, err := getClient()
 	if err != nil {
 		return err
@@ -250,7 +252,7 @@ func monitorPrinterState(printer string) {
 			log.Printf("Printer %s state changed: %s -> %s", printer, currentState, newState)
 
 			message := fmt.Sprintf("🖨️ Printer %s state changed: %s -> %s", printer, currentState, newState)
-			err = sendMsg(message)
+			err = sendMatrixMsg(message)
 			if err != nil {
 				log.Printf("Error sending notification: %v", err)
 			}
