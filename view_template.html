@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8">
+<title>Podgląd i Status</title>
+<style>
+/* Twoje style CSS */
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+}
+.container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+.preview {
+    flex: 1;
+    background: #000;
+    height: 50vh;
+}
+.status {
+    flex: 1;
+    background: #f0f0f0;
+    padding: 10px;
+    box-sizing: border-box;
+    height: 50vh;
+}
+.status p {
+    margin: 0;
+}
+img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+@media (min-aspect-ratio: 1/1) {
+    .container {
+        flex-direction: row;
+    }
+    .preview,
+    .status {
+        height: 100%;
+        width: 50vw;
+    }
+}
+</style>
+</head>
+<body>
+<div class="container">
+    <div class="preview">
+        <img src="/{{.Printer}}/cam/" width="100%" height="100%" alt="Podgląd" />
+    </div>
+    <div class="status">
+        <p id="status">Status ładowania...</p>
+        <input type="checkbox" onclick="triggerLights()">Włącz/Wyłącz światła</input>
+    </div>
+</div>
+
+<script>
+function fetchStatus() {
+    fetch('/{{.Printer}}/status/')
+    .then(response => response.json())
+    .then(data => {
+        const completion = data['progress']['completion'];
+        document.getElementById('status').innerHTML = `
+        <p>Postęp drukowania: ${(completion).toFixed(2)}%</p>
+        `;
+    })
+    .catch(error => {
+        document.getElementById('status').innerHTML = '<p>Błąd podczas pobierania statusu.</p>';
+    });
+}
+
+function triggerLights() {
+    const lightsOn = document.querySelector('input[type="checkbox"]').checked;
+    if (lightsOn) {
+        fetch('/lights/on/', { method: 'POST' }).catch(console.error);
+    } else {
+        fetch('/lights/off/', { method: 'POST' }).catch(console.error);
+    }
+}
+
+fetchStatus();
+setInterval(fetchStatus, 5000);
+</script>
+
+</body>
+</html>
