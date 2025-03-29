@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"html/template"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -31,7 +30,7 @@ type PrinterResponse struct {
 }
 
 func readFileContentsTrimmed(path string) string {
-	data, err := ioutil.ReadFile(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		panic(err)
 	}
@@ -48,8 +47,8 @@ var matrixPassword = readFileContentsTrimmed("secrets/matrix-password.txt")
 var matrixRoomID = readFileContentsTrimmed("secrets/matrix-room-id.txt")
 
 func main() {
-	//go monitorPrinterState("ender-d")
-	//go monitorPrinterState("ender-c")
+	go monitorPrinterState("ender-d")
+	go monitorPrinterState("ender-c")
 
 	http.HandleFunc("/ender-d/cam/", webcamHandler("ender-d"))
 	http.HandleFunc("/ender-d/status/", printersStatusHandler("ender-d"))
@@ -91,10 +90,13 @@ func getPrinterState(printer string) (PrinterResponse, error) {
 	if err != nil {
 		return PrinterResponse{}, fmt.Errorf("failed to execute HTTP request: %w", err)
 	}
-	defer resp.Body.Close()
+
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	// Read response body
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return PrinterResponse{}, fmt.Errorf("failed to read response body: %w", err)
 	}
@@ -167,14 +169,17 @@ func sendImage(imagePath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open image file: %w", err)
 	}
-	defer file.Close()
+
+	defer func() {
+		_ = file.Close()
+	}()
 
 	fileInfo, err := file.Stat()
 	if err != nil {
 		return fmt.Errorf("failed to get file info: %w", err)
 	}
 
-	fileData, err := ioutil.ReadAll(file)
+	fileData, err := io.ReadAll(file)
 	if err != nil {
 		return fmt.Errorf("failed to read file data: %w", err)
 	}
@@ -225,13 +230,13 @@ func sendImage(imagePath string) error {
 	return nil
 }
 
-func monitorPrinterState(printer string) error {
+func monitorPrinterState(printer string) {
 	log.Println("Starting printer state monitoring...")
 
 	// Get initial state
 	resp, err := getPrinterState(printer)
 	if err != nil {
-		return fmt.Errorf("initial state check failed: %w", err)
+		log.Printf("initial state check failed: %v", err)
 	}
 	currentState := resp.State
 
@@ -240,7 +245,7 @@ func monitorPrinterState(printer string) error {
 	// Send initial notification
 	err = sendMsg(fmt.Sprintf("Printer monitoring started. Current state: %s", currentState))
 	if err != nil {
-		return fmt.Errorf("failed to send initial notification: %w", err)
+		log.Printf("failed to send initial notification: %v", err)
 	}
 
 	// Poll for state changes every 30 seconds
@@ -269,8 +274,6 @@ func monitorPrinterState(printer string) error {
 			currentState = newState
 		}
 	}
-
-	return nil
 }
 
 func webcamHandler(printer string) http.HandlerFunc {
@@ -306,7 +309,9 @@ func webcamHandler(printer string) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusBadGateway)
 			return
 		}
-		defer resp.Body.Close()
+		defer func() {
+			_ = resp.Body.Close()
+		}()
 
 		// Przekaż nagłówki odpowiedzi do klienta
 		for k, v := range resp.Header {
@@ -346,7 +351,7 @@ func printersStatusHandler(printer string) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 
 		// Zwróć stan drukarki jako JSON
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}
 }
 
@@ -374,7 +379,7 @@ func viewHandler(printer string) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "text/html")
-		tmpl.Execute(w, data)
+		_ = tmpl.Execute(w, data)
 	}
 }
 
@@ -402,11 +407,11 @@ func lightsSet(w http.ResponseWriter, r *http.Request, power string) {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	w.WriteHeader(http.StatusOK)
-
-	return
 }
 
 func lightsOn(w http.ResponseWriter, r *http.Request) {
