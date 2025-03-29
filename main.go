@@ -38,7 +38,6 @@ func readFileContentsTrimmed(path string) string {
 
 var username = "hakierspejs"
 var password = readFileContentsTrimmed("secrets/http-password.txt")
-var streamURLenderD = "https://opti3d.siedziba.hs-ldz.pl/ender-d/webcam/?action=stream"
 
 var matrixUserID = readFileContentsTrimmed("secrets/matrix-user-id.txt")
 var matrixUsername = readFileContentsTrimmed("secrets/matrix-username.txt")
@@ -230,6 +229,7 @@ func webcamHandler(printer string) http.HandlerFunc {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
+		var streamURLenderD = "https://opti3d.siedziba.hs-ldz.pl/" + printer + "/webcam/?action=stream"
 
 		// Żądanie strumienia wideo od zewnętrznego serwera
 		req, err := http.NewRequest("GET", streamURLenderD, nil)
