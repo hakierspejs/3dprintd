@@ -12,9 +12,10 @@ ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 COPY ./main.go .
 COPY ./go.mod .
 
-COPY secrets secrets/
-
 RUN go get
 RUN go build -o 3dprint
+
+COPY secrets secrets/
+COPY view_template.html view_template.html
 
 CMD ["./3dprint"]
