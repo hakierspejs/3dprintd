@@ -55,6 +55,9 @@ img {
     <div class="status">
         <p id="status">Status ładowania...</p>
         <input type="checkbox" onclick="triggerLights()">Włącz/Wyłącz światła</input>
+        <input type="button" value="Zatrzymaj drukowanie"
+            onclick="fetch('/{{.Printer}}/cancel/', { method: 'POST' }).catch(console.error)"
+        >
     </div>
 </div>
 

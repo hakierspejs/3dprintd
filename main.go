@@ -52,10 +52,12 @@ func main() {
 
 	http.HandleFunc("/ender-d/cam/", webcamHandler("ender-d"))
 	http.HandleFunc("/ender-d/status/", printersStatusHandler("ender-d"))
+	http.HandleFunc("/ender-d/cancel/", cancelPrintJob("ender-d"))
 	http.HandleFunc("/ender-d/", viewHandler("ender-d"))
 
 	http.HandleFunc("/ender-c/cam/", webcamHandler("ender-c"))
 	http.HandleFunc("/ender-c/status/", printersStatusHandler("ender-c"))
+	http.HandleFunc("/ender-c/cancel/", cancelPrintJob("ender-c"))
 	http.HandleFunc("/ender-c/", viewHandler("ender-c"))
 
 	http.HandleFunc("/lights/off/", lightsOff)
@@ -127,6 +129,46 @@ func getPrinterState(printer string) (PrinterResponse, error) {
 	}
 
 	return printerResp, nil
+}
+
+// curl -k --json '{"command": "cancel"}' 'https://localhost/ender-c/api/job' -H "X-Api-Key: `cat ~/.octo-ender-c-api`"
+func cancelPrintJob(printer string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Read API key from file
+		apiKey := readFileContentsTrimmed("secrets/" + printer + "-api-key.txt")
+
+		// Create HTTP request
+		req, err := http.NewRequest("POST", "https://opti3d.siedziba.hs-ldz.pl/"+printer+"/api/job", strings.NewReader(`{"command": "cancel"}`))
+		if err != nil {
+			log.Printf("failed to create HTTP request: %v", err)
+		}
+
+		// Add API key header
+		req.Header.Add("X-Api-Key", apiKey)
+
+		// Create HTTP client that skips SSL verification
+		tr := &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}
+		client := &http.Client{Transport: tr}
+
+		// Make the request
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Printf("failed to execute HTTP request: %v", err)
+		}
+
+		defer func() {
+			_ = resp.Body.Close()
+		}()
+
+		// Read response body
+		_, err = io.ReadAll(resp.Body)
+		if err != nil {
+			log.Printf("failed to read response body: %v", err)
+		}
+
+	}
 }
 
 func getClient() (*mautrix.Client, id.RoomID, error) {
