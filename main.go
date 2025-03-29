@@ -163,10 +163,11 @@ func cancelPrintJob(printer string) http.HandlerFunc {
 		}()
 
 		// Read response body
-		_, err = io.ReadAll(resp.Body)
+		respBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
 			log.Printf("failed to read response body: %v", err)
 		}
+		log.Printf("cancelPrintJob response: %s", respBytes)
 
 	}
 }
