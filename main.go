@@ -11,7 +11,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -155,78 +154,6 @@ func sendMsg(msg string) error {
 	}
 
 	log.Printf("sent text message(msg=%q) => %s", msg, sendResp.EventID)
-	return nil
-}
-
-func sendImage(imagePath string) error {
-	client, roomID, err := getClient()
-	if err != nil {
-		return err
-	}
-
-	// Read the image file
-	file, err := os.Open(imagePath)
-	if err != nil {
-		return fmt.Errorf("failed to open image file: %w", err)
-	}
-
-	defer func() {
-		_ = file.Close()
-	}()
-
-	fileInfo, err := file.Stat()
-	if err != nil {
-		return fmt.Errorf("failed to get file info: %w", err)
-	}
-
-	fileData, err := io.ReadAll(file)
-	if err != nil {
-		return fmt.Errorf("failed to read file data: %w", err)
-	}
-
-	// Get MIME type based on file extension
-	mimeType := "image/jpeg" // Default to JPEG
-	ext := strings.ToLower(filepath.Ext(imagePath))
-	switch ext {
-	case ".png":
-		mimeType = "image/png"
-	case ".gif":
-		mimeType = "image/gif"
-	case ".webp":
-		mimeType = "image/webp"
-	}
-
-	// Upload the image to the Matrix media server
-	ctx := context.Background()
-	resp, err := client.UploadMedia(ctx, mautrix.ReqUploadMedia{
-		ContentBytes: fileData,
-		ContentType:  mimeType,
-		FileName:     filepath.Base(imagePath),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to upload image: %w", err)
-	}
-
-	// Convert fileInfo.Size() from int64 to int for FileInfo.Size
-	fileSize := int(fileInfo.Size())
-
-	// Send a message with the image
-	fileName := filepath.Base(imagePath)
-	sendResp, err := client.SendMessageEvent(ctx, roomID, event.EventMessage, &event.MessageEventContent{
-		MsgType: event.MsgImage,
-		Body:    fileName, // Fallback text for clients that can't display images
-		URL:     resp.ContentURI.CUString(),
-		Info: &event.FileInfo{
-			Size:     fileSize, // Now using int type
-			MimeType: mimeType,
-			// You could add width and height here if you wanted to parse the image
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("failed to send image message: %w", err)
-	}
-
-	log.Printf("sent image message(%s) => %s", fileName, sendResp.EventID)
 	return nil
 }
 
