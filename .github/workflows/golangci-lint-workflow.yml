@@ -1,8 +1,8 @@
 name: GolangCI-Lint
 
 on:
-  - push
-
+  push:
+    branches:
 jobs:
   go-lint:
     steps:
