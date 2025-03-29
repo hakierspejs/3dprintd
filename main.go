@@ -169,12 +169,6 @@ func monitorPrinterState(printer string) {
 
 	log.Printf("Initial printer state: %s", currentState)
 
-	// Send initial notification
-	err = sendMsg(fmt.Sprintf("Printer monitoring started. Current state: %s", currentState))
-	if err != nil {
-		log.Printf("failed to send initial notification: %v", err)
-	}
-
 	// Poll for state changes every 30 seconds
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
@@ -189,9 +183,9 @@ func monitorPrinterState(printer string) {
 
 		// If state changed, send notification
 		if newState != currentState {
-			log.Printf("Printer state changed: %s -> %s", currentState, newState)
+			log.Printf("Printer %s state changed: %s -> %s", printer, currentState, newState)
 
-			message := fmt.Sprintf("🖨️ Printer state changed: %s -> %s", currentState, newState)
+			message := fmt.Sprintf("🖨️ Printer %s state changed: %s -> %s", printer, currentState, newState)
 			err = sendMsg(message)
 			if err != nil {
 				log.Printf("Error sending notification: %v", err)
